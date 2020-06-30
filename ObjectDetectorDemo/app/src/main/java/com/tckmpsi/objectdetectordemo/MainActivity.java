@@ -12,6 +12,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.MediaStore;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
@@ -30,6 +31,9 @@ import java.io.OutputStream;
 
 public class MainActivity extends AppCompatActivity {
     private static int RESULT_LOAD_IMAGE = 1;
+    private static int REQUEST_IMAGE_CAPTURE = 2;
+
+    private static final String TAG = "Resnet101";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -49,12 +53,18 @@ public class MainActivity extends AppCompatActivity {
             public void onClick(View arg0) {
                 TextView textView = findViewById(R.id.result_text);
                 textView.setText("");
-                Intent i = new Intent(
-                        Intent.ACTION_PICK,
-                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
 
-                startActivityForResult(i, RESULT_LOAD_IMAGE);
 
+//                Intent i = new Intent(
+////                        Intent.ACTION_PICK,
+////                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+////
+////                startActivityForResult(i, RESULT_LOAD_IMAGE);
+
+                Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+                if (takePictureIntent.resolveActivity(getPackageManager()) != null) {
+                    startActivityForResult(takePictureIntent, REQUEST_IMAGE_CAPTURE);
+                }
 
             }
         });
@@ -78,20 +88,27 @@ public class MainActivity extends AppCompatActivity {
                     bitmap = Bitmap.createScaledBitmap(bitmap, 400, 400, true);
 
                     //Loading the model file.
-                    module = Module.load(fetchModelFile(MainActivity.this, "resnet18_traced.pt"));
+                    module = Module.load(fetchModelFile(MainActivity.this, "student_traced_1.pt"));
                 } catch (IOException e) {
                     finish();
                 }
 
                 //Input Tensor
+                float[] TORCHVISION_NORM_MEAN_RGB = new float[]{0.4914f, 0.4822f, 0.4465f}; //{0.485f, 0.456f, 0.406f};
+                float[] TORCHVISION_NORM_STD_RGB = new float[]{0.247f, 0.243f, 0.261f}; //{0.229f, 0.224f, 0.225f};
+
+                //(0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261)
                 final Tensor input = TensorImageUtils.bitmapToFloat32Tensor(
                         bitmap,
-                        TensorImageUtils.TORCHVISION_NORM_MEAN_RGB,
-                        TensorImageUtils.TORCHVISION_NORM_STD_RGB
+                        TORCHVISION_NORM_MEAN_RGB,
+                        TORCHVISION_NORM_STD_RGB
                 );
 
                 //Calling the forward of the model to run our input
+                long startTime =   System.currentTimeMillis();
                 final Tensor output = module.forward(IValue.from(input)).toTensor();
+                long processed = System.currentTimeMillis() - startTime;
+                Log.i(TAG, "Done: " + processed);
 
 
                 final float[] score_arr = output.getDataAsFloatArray();
@@ -106,8 +123,10 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
 
+                Log.i(TAG, "RESULT:: " + ms_ix);
+
                 //Fetching the name from the list based on the index
-                String detected_class = ModelClasses.MODEL_CLASSES[ms_ix];
+                String detected_class = ModelClasses.cifar100_classes[ms_ix];//ModelClasses.MODEL_CLASSES[ms_ix];
 
                 //Writing the detected class in to the text view of the layout
                 TextView textView = findViewById(R.id.result_text);
@@ -122,6 +141,14 @@ public class MainActivity extends AppCompatActivity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         //This functions return the selected image from gallery
         super.onActivityResult(requestCode, resultCode, data);
+
+        if (requestCode == REQUEST_IMAGE_CAPTURE && resultCode == RESULT_OK) {
+            Bundle extras = data.getExtras();
+            Bitmap imageBitmap = (Bitmap) extras.get("data");
+            ImageView imageView = (ImageView) findViewById(R.id.image);
+            imageView.setImageBitmap(imageBitmap);
+        }
+
 
         if (requestCode == RESULT_LOAD_IMAGE && resultCode == RESULT_OK && null != data) {
             Uri selectedImage = data.getData();
