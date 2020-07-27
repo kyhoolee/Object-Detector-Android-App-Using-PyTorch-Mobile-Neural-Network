@@ -2,6 +2,7 @@ package com.tckmpsi.objectdetectordemo;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import android.app.ActivityManager;
 import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
@@ -87,21 +88,41 @@ public class MainActivity extends AppCompatActivity {
                     //Here we reshape the image into 400*400
                     bitmap = Bitmap.createScaledBitmap(bitmap, 400, 400, true);
 
+                    Runtime runtime = Runtime.getRuntime();
+
+                    long before = runtime.totalMemory() - runtime.freeMemory();
+
+                    ActivityManager.MemoryInfo b = getAvailableMemory();
+                    Log.i(TAG, "Before-mem:: " + b.availMem + " -- " + b.totalMem);
                     //Loading the model file.
-                    module = Module.load(fetchModelFile(MainActivity.this, "student_traced_1.pt"));
+                    ///home/kylee/work/projects/8_tf_optimize/2_pytorch_tutorial/finetuned_quantized_model.pt
+                    String f = fetchModelFile(MainActivity.this, "mobilenet_v2_traced.pt");
+                    Log.i(TAG, "File:: " + f);
+                    module = Module.load(f);
+
+                    long after = runtime.totalMemory() - runtime.freeMemory();
+                    Log.i(TAG, "test memory: " + (after - before));
+
+                    ActivityManager.MemoryInfo a = getAvailableMemory();
+                    Log.i(TAG, "After-mem:: " + a.availMem + " -- " + a.totalMem);
+                    Log.i(TAG, "Diff-mem:: " + (b.availMem - a.availMem));
+
+                    // Resnet-152
+                    // Diff-mem:: 249278464
+                    // Diff-mem:: 205574144
                 } catch (IOException e) {
                     finish();
                 }
 
                 //Input Tensor
-                float[] TORCHVISION_NORM_MEAN_RGB = new float[]{0.4914f, 0.4822f, 0.4465f}; //{0.485f, 0.456f, 0.406f};
-                float[] TORCHVISION_NORM_STD_RGB = new float[]{0.247f, 0.243f, 0.261f}; //{0.229f, 0.224f, 0.225f};
+                float[] TORCHVISION_NORM_MEAN_RGB = new float[]{0.485f, 0.456f, 0.406f};
+                float[] TORCHVISION_NORM_STD_RGB = new float[]{0.229f, 0.224f, 0.225f};
 
                 //(0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261)
                 final Tensor input = TensorImageUtils.bitmapToFloat32Tensor(
                         bitmap,
-                        TORCHVISION_NORM_MEAN_RGB,
-                        TORCHVISION_NORM_STD_RGB
+                        TensorImageUtils.TORCHVISION_NORM_MEAN_RGB,
+                        TensorImageUtils.TORCHVISION_NORM_STD_RGB
                 );
 
                 //Calling the forward of the model to run our input
@@ -126,7 +147,7 @@ public class MainActivity extends AppCompatActivity {
                 Log.i(TAG, "RESULT:: " + ms_ix);
 
                 //Fetching the name from the list based on the index
-                String detected_class = ModelClasses.cifar100_classes[ms_ix];//ModelClasses.MODEL_CLASSES[ms_ix];
+                String detected_class = ModelClasses.MODEL_CLASSES[ms_ix];//ModelClasses.MODEL_CLASSES[ms_ix];
 
                 //Writing the detected class in to the text view of the layout
                 TextView textView = findViewById(R.id.result_text);
@@ -137,6 +158,17 @@ public class MainActivity extends AppCompatActivity {
         });
 
     }
+
+
+    // Get a MemoryInfo object for the device's current memory status.
+    private ActivityManager.MemoryInfo getAvailableMemory() {
+        ActivityManager activityManager = (ActivityManager) this.getSystemService(ACTIVITY_SERVICE);
+        ActivityManager.MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
+        activityManager.getMemoryInfo(memoryInfo);
+        return memoryInfo;
+    }
+
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         //This functions return the selected image from gallery
@@ -178,6 +210,7 @@ public class MainActivity extends AppCompatActivity {
     public static String fetchModelFile(Context context, String modelName) throws IOException {
         File file = new File(context.getFilesDir(), modelName);
         if (file.exists() && file.length() > 0) {
+            Log.i(TAG, "Done read file:: " + file.getAbsolutePath());
             return file.getAbsolutePath();
         }
 
